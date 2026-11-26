@@ -1,0 +1,8 @@
+build/
+*.cvt
+*.img
+console.txt
+dump*.bin
+__pycache__/
+# the toolkit when `make toolkit` clones it here (P8KIT=veranda-prog8)
+/veranda-prog8/

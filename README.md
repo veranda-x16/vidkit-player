@@ -6,7 +6,12 @@ SD card with **VIDKIT**, Anthony W. Henry's banked-RAM streaming library,
 which is packed inside the program. Its window follows Veranda's MOD
 Player.
 
-- **Download:** [`VIDKIT Player.cvt`](VIDKIT%20Player.cvt) in this repository
+- **Download:** it comes with Veranda: `VIDKIT Player.cvt` is in
+  `/VERANDA/APPS` of the SD-card zip of each
+  [Veranda release](https://github.com/veranda-x16/veranda/releases)
+  (and Veranda Update installs it). A build of this repository's latest
+  source is the `VIDKIT Player` artifact of its
+  [Actions](https://github.com/veranda-x16/vidkit-player/actions) runs.
 - **Needs:** Veranda (API 5), the X16 ROM R48 or later, an SD card.
   High-bandwidth (SPI) videos play from the SD card only, not from the
   emulator's host file system.
@@ -40,7 +45,8 @@ In the playlist: Up/Down, PgUp/PgDn, Home/End choose a file. Return opens
 a folder or plays a file, Space plays, Right plays the next file,
 Left goes up a folder. Alt+Q quits.
 
-While it plays: Esc stops, Space pauses, Up/Down set the volume.
+While it plays: Esc stops, Space pauses, Up/Down set the volume, F5
+plays the file again when it ends (Esc still stops it).
 
 With **Play next** on, the player goes on to the next file by itself.
 A video followed by another video runs straight into it, fading through
@@ -59,9 +65,48 @@ it, No starts it again from the beginning and deletes the bookmark.
 Play next, Repeat and Play all use the bookmark without asking. A file
 that plays to its end loses its bookmark.
 
+A run of files (Play next, Repeat, Play all) holds Veranda's screen
+blanking off until it ends, so the screen stays on with no key pressed.
+
+## Building
+
+You need Prog8 12.3.5 (`prog8c`, or its jar with Java 17 or later),
+64tass, Python 3, make and git; Veranda's SDK (a Veranda checkout's
+`make sdk`, which needs cc65); and Prog8 for Veranda
+([veranda-prog8](https://github.com/veranda-x16/veranda-prog8)), the
+toolkit, at the version `TOOLKIT` names. VIDKIT itself is in
+[`vendor/vidkit/`](vendor/vidkit/README.md).
+
+Side by side, as the Makefile expects by default:
+
+    git clone https://github.com/veranda-x16/veranda.git ../veranda
+    make -C ../veranda sdk
+    make toolkit                     # veranda-prog8 at TOOLKIT's version, into ../veranda-prog8
+    make PROG8C="java -jar /path/to/prog8c-12.3.5-all.jar"
+
+The player is `build/VIDKIT Player.cvt`. `P8KIT=` and `VSDK=` name other
+places for the toolkit and the SDK, `P8KIT_URL=` another place to clone
+the toolkit from. An exported tree (no `.git`) builds the same with
+`P8KIT=` given: Veranda's release build does that.
+
+`make test EMU=/path/to/x16emu ROM=/path/to/rom.bin` builds a test
+version (AUTOTEST) and runs it headless from an SD card image: it plays
+the folder by itself (three WAV files `tests/mkwav.py` makes, or
+`MEDIA="8BG.WAV A.SPV B.SPV"`) and checks what it logs: the plays, the
+bookmarks, a stop with F5's loop on, *Play all* in an empty folder, the
+blanking held off for the run and put back.
+
+The GitHub workflow (`.github/workflows/ci.yml`) does the same on each
+push: Veranda's SDK from veranda-x16/veranda, the toolkit at `TOOLKIT`'s
+version, the build (the `.cvt` as an artifact) and `make test`.
+
 ## Credits
 
-- **VIDKIT** by Anthony W. Henry: the streaming library, MIT licence.
+- **VIDKIT** by Anthony W. Henry: the streaming library, MIT licence
+  (`vendor/vidkit/`).
+- **Prog8 for Veranda**
+  ([veranda-x16/veranda-prog8](https://github.com/veranda-x16/veranda-prog8)),
+  MIT: the Prog8 target and libraries the player is built with.
 - **Veranda** by Marcin Spoczynski
   ([veranda-x16/veranda](https://github.com/veranda-x16/veranda)), MIT
   licence: the API the player is written against; its window's layout and
@@ -71,4 +116,6 @@ that plays to its end loses its bookmark.
 
 ## Licence
 
-MIT, Copyright (c) 2026 Anthony W. Henry (see [LICENSE](LICENSE)).
+MIT, Copyright (c) 2026 Anthony W. Henry (see [LICENSE](LICENSE)). The
+parts ported from Veranda's MOD Player keep their notice, Copyright (c)
+2026 Marcin Spoczynski, MIT: see [NOTICE.md](NOTICE.md).

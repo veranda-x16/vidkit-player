@@ -1,0 +1,85 @@
+# VIDKIT Player: built against Veranda's SDK and Prog8 for Veranda at the
+# version TOOLKIT names, "VIDKIT Player.cvt" kept as an artifact, and the
+# test build (AUTOTEST) run headless in the official x16emu R49 with the
+# R49 ROM from an SD card image (make test: WAV files tests/mkwav.py makes).
+# On pushes, tags, pull requests, and weekly.
+#
+# The tools come from Veranda's tools/ci/setup.sh, as Veranda's own
+# workflows have them (pinned and SHA-256 checked): "all" (cc65, x16emu
+# R49, the R49 ROM, downloaded at run time and never kept) and "prog8"
+# (Prog8 12.3.5's official jar, Java 17, 64tass). Veranda: the same tag as
+# this run's, else main. Veranda's own release builds the player too (its
+# tools/mkdist.sh, this repository at the release's tag).
+#
+# Repository variable (Settings > Variables), optional:
+#   P8KIT_URL   where to clone Prog8 for Veranda from (default: TOOLKIT's url)
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  schedule:
+    - cron: '37 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  P8KIT_URL: ${{ vars.P8KIT_URL }}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          path: app
+      - name: Veranda (the same tag, else main)
+        env:
+          WANT: ${{ github.ref_type == 'tag' && github.ref_name || 'main' }}
+        run: |
+          git clone -q --depth 1 --branch "$WANT" https://github.com/veranda-x16/veranda.git veranda 2>/dev/null ||
+            git clone -q --depth 1 https://github.com/veranda-x16/veranda.git veranda
+          echo "Veranda at $(git -C veranda log -1 --format='%h %s' | cut -c1-80)"
+      - name: Prog8 for Veranda (TOOLKIT's version)
+        working-directory: app
+        run: |
+          make toolkit P8KIT="$GITHUB_WORKSPACE/veranda-prog8" ${P8KIT_URL:+P8KIT_URL="$P8KIT_URL"}
+          echo "Prog8 for Veranda at $(git -C "$GITHUB_WORKSPACE/veranda-prog8" describe --tags --always)"
+      - name: The tools' cache (cc65, x16emu, Prog8)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/ci-tools
+          key: ci-tools-cc65-547d923-x16emu-r49-prog8-12.3.5
+      - name: Tools (pinned)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil libsdl2-2.0-0 >/dev/null
+          veranda/tools/ci/setup.sh all
+          grep -q '^prog8)' veranda/tools/ci/setup.sh ||
+            { echo "::error::Veranda's tools/ci/setup.sh has no prog8 step yet"; exit 1; }
+          veranda/tools/ci/setup.sh prog8
+      - name: Veranda's SDK
+        working-directory: veranda
+        run: |
+          python3 -I -B tools/apigen.py api/veranda.api build/gen
+          python3 -I -B tools/kbuild.py
+          tools/mksdk.sh "$RUNNER_TEMP/sdk"
+      - name: Build VIDKIT Player
+        working-directory: app
+        run: |
+          make P8KIT="$GITHUB_WORKSPACE/veranda-prog8" VSDK="$RUNNER_TEMP/sdk" PROG8C="$PROG8C"
+          ls -l 'build/VIDKIT Player.cvt'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: VIDKIT Player
+          path: app/build/VIDKIT Player.cvt
+      - name: Test (AUTOTEST, headless)
+        working-directory: app
+        run: make test P8KIT="$GITHUB_WORKSPACE/veranda-prog8" VSDK="$RUNNER_TEMP/sdk" PROG8C="$PROG8C" EMU="$EMU" ROM="$ROM"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: failure()
+        with:
+          name: console
+          path: app/build/run/console.txt
+          if-no-files-found: ignore

@@ -1,0 +1,5 @@
+# The version of Prog8 for Veranda (the toolkit: its target, lib/ and tools/)
+# this player is built with. `make toolkit` and the CI clone it from here;
+# the CI's repository variable P8KIT_URL, or make's P8KIT_URL, overrides the url.
+url  https://github.com/veranda-x16/veranda-prog8.git
+ref  v0.1.0

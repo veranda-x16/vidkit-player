@@ -1,0 +1,11 @@
+# VIDKIT Player: a Veranda application (Veranda's tools/vpack.py)
+name        = VIDKIT Player
+class       = VIDKITPlay
+version     = 1.0
+author      = VIDKIT + Prog8
+description = SPV videos, WAV and ZCM audio, streamed from the SD card by VIDKIT.
+mode        = 640x480
+api         = 5
+overlays    = banked
+icon        = icon.pbm
+documents   = SPV WAV ZCM
