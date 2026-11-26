@@ -43,7 +43,7 @@ with the mouse while it plays.
 
 In the playlist: Up/Down, PgUp/PgDn, Home/End choose a file. Return opens
 a folder or plays a file, Space plays, Right plays the next file,
-Left goes up a folder. Alt+Q quits.
+Backspace goes up a folder; Left plays the previous file. Alt+Q quits.
 
 While it plays: Esc stops, Space pauses, Up/Down set the volume, F5
 plays the file again when it ends (Esc still stops it).

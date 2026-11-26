@@ -17,7 +17,11 @@
 #   EMU, ROM    x16emu and the R49 rom.bin (make test)
 P8KIT   ?= ../veranda-prog8
 KIT     := $(P8KIT)
-P8KIT_URL ?= $(shell sed -n 's/^url  *//p' TOOLKIT)
+P8KIT_URL ?=
+# (an empty P8KIT_URL, as the CI's unset repository variable gives, means TOOLKIT's url)
+ifeq ($(strip $(P8KIT_URL)),)
+override P8KIT_URL := $(shell sed -n 's/^url  *//p' TOOLKIT)
+endif
 P8KIT_REF := $(shell sed -n 's/^ref  *//p' TOOLKIT)
 VSDK    ?= ../veranda/build/sdk
 VTOOLS  ?= $(VSDK)/tools
