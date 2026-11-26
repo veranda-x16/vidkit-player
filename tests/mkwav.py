@@ -3,7 +3,9 @@
 recordings. 22,050 Hz, 16 bits, stereo (88,200 bytes a second, as the test's
 bookmark expects of 8BG.WAV), a few tones.
 
-    python3 tests/mkwav.py <folder>      8BG.WAV (12 s), BEEP.WAV (6 s), CHIME.WAV (6 s)
+    python3 tests/mkwav.py <folder>      8BG.WAV (12 s), BEEP.WAV (6 s), CHIME.WAV (6 s),
+                                         and W00.WAV-W19.WAV, short ones (the wheel's
+                                         test: a list longer than the panel, after these)
 
 MIT licence (see LICENSE)."""
 import math
@@ -37,6 +39,8 @@ def main():
     tone(os.path.join(d, '8BG.WAV'), 12, [262, 330, 392, 523])
     tone(os.path.join(d, 'BEEP.WAV'), 6, [440, 880])
     tone(os.path.join(d, 'CHIME.WAV'), 6, [660, 550, 440])
+    for i in range(20):
+        tone(os.path.join(d, 'W%02d.WAV' % i), 0.1, [440])
 
 
 if __name__ == '__main__':
