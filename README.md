@@ -44,13 +44,18 @@ with the mouse while it plays.
 In the playlist: Up/Down, PgUp/PgDn, Home/End choose a file. Return opens
 a folder or plays a file, Space plays, Right plays the next file,
 Backspace goes up a folder; Left plays the previous file. Alt+Q quits.
+The mouse wheel scrolls the playlist, three rows a notch.
 
 While it plays: Esc stops, Space pauses, Up/Down set the volume, F5
-plays the file again when it ends (Esc still stops it).
+plays the file again when it ends (Esc still stops it). With Play next
+or Shuffle on, Tab skips to the next file (Shuffle: a random one); a
+skipped file keeps no bookmark. Playing a single file, Tab does nothing.
+The Deck shows these keys.
 
 With **Play next** on, the player goes on to the next file by itself.
 A video followed by another video runs straight into it, fading through
-black, without coming back to the window.
+black, without coming back to the window; so does a video skipped with
+Tab when the next file is a video too.
 
 ## Bookmarks
 
@@ -91,10 +96,14 @@ the toolkit from. An exported tree (no `.git`) builds the same with
 
 `make test EMU=/path/to/x16emu ROM=/path/to/rom.bin` builds a test
 version (AUTOTEST) and runs it headless from an SD card image: it plays
-the folder by itself (three WAV files `tests/mkwav.py` makes, or
-`MEDIA="8BG.WAV A.SPV B.SPV"`) and checks what it logs: the plays, the
-bookmarks, a stop with F5's loop on, *Play all* in an empty folder, the
-blanking held off for the run and put back.
+the folder by itself (WAV files `tests/mkwav.py` makes: three to play
+and twenty short ones that make the list longer than the panel; or
+`MEDIA=` files, 8BG.WAV, BEEP.WAV and CHIME.WAV first) and checks what
+it logs: the plays, the bookmarks, a stop with F5's loop on, *Play all*
+in an empty folder, the mouse wheel, Tab (nothing for a single file; a
+skip in a list, its bookmark gone, the next file played; with
+`DOG1.SPV` and `DOG2.SPV` among MEDIA, a skip from one video straight
+into the next), the blanking held off for the run and put back.
 
 The GitHub workflow (`.github/workflows/ci.yml`) does the same on each
 push: Veranda's SDK from veranda-x16/veranda, the toolkit at `TOOLKIT`'s

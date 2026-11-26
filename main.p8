@@ -17,6 +17,15 @@
 ; Every action that plays something is done from the main loop (appMain),
 ; not from inside a menu's or an icon's routine: a video redraws the whole
 ; screen, menus and icons included.
+;
+; Room: some locals are aliases of the zero-page registers (cx16.r5-r10),
+; which saves bytes below $8800. Only where nothing in the variable's span
+; writes that register: no Veranda call (the kernel uses r0-r15 freely),
+; and only calls whose code was checked (Prog8's own library uses r0-r2
+; and r12-r15; lower(), rank(), slot() none). A sub holding an alias across
+; a call uses other registers than the sub it calls (list_sort r8/r9 around
+; ent_cmp's r5/r6). play_control runs inside VIDKIT, which vkx.user_call
+; shields (r0-r15 kept around the call).
 
 %import vr
 %import vrkit
@@ -69,6 +78,12 @@ main {
     const uword VP_B = 440
     const uword DISC_X = 288       ; the disc, 64 x 64 (x on a card)
     const uword DISC_Y = 368
+    const uword LG_X1 = 28         ; the key legend: left of the disc (under its header),
+    const uword LG_X2 = 456        ; right of it, nearer the panel's edge
+    const uword LG_Y = 373         ; the header's baseline; the keys' lines follow
+    const uword LG_DY = 15
+    const uword LG_KEYW = 64       ; the key names' column: left,
+    const uword LG_KEYW2 = 32      ; right (F5, Tab: short)
 
     ; ---------------------------------------------------------------- the folder's entries
     ; in two RAM banks, 64 bytes each: the type, the name. Types: U "..",
@@ -185,7 +200,8 @@ main {
         frame()
         labels()
         status_modes()
-        icons_on()
+        if not AUTOTEST
+            icons_on()                      ; (the test build takes no clicks: room for its checks)
         panel()
         ui_track()
         menus()
@@ -230,8 +246,37 @@ main {
         vr.currentMode = vr.SET_BOLD
         vr.WPutString("Deck", LIST_X + 6, VP_T + 12)
         vr.currentMode = 0
+        if not AUTOTEST
+            legend()                        ; (not in the test build: room for its checks)
         vktape.reset()
         vktape.disc_idle()
+    }
+
+    ; the keys while a file plays (VIDKIT's key controller, and Tab: the
+    ; player's skip in a list): pairs of key and what it does, three a column,
+    ; either side of the disc
+    str[] @nosplit legend_text = ["Esc", "stop", "Space", "pause", "Up/Down", "volume",
+                        "F5", "play again at end", "Tab", "next file in a list"]
+
+    sub legend() {
+        vr.currentMode = vr.SET_BOLD | vr.SET_UNDERLINE
+        vr.WPutString("Keys during play", LG_X1, LG_Y)
+        ubyte k
+        for k in 0 to 4 {
+            uword x = LG_X1
+            uword kw = LG_KEYW
+            ubyte row = k + 1
+            if k >= 3 {
+                x = LG_X2
+                kw = LG_KEYW2
+                row = k - 2
+            }
+            uword y = LG_Y + (row as uword) * LG_DY
+            vr.currentMode = vr.SET_BOLD
+            vr.WPutString(legend_text[k * 2], x, y)
+            vr.currentMode = 0
+            vr.WPutString(legend_text[k * 2 + 1], x + kw, y)
+        }
     }
 
     ; ---------------------------------------------------------------- the menus
@@ -283,6 +328,7 @@ main {
     sub m_about() {
         vr.GotoFirstMenu()
         void vr.DoDlgBox(&box_about)
+        void take_wheel()                   ; (turns made meanwhile don't scroll)
     }
     sub m_playall() {
         ; the folder's first file, then on (a run: bookmarks used, not asked).
@@ -437,7 +483,8 @@ main {
 
     sub leds(bool playing, bool paused) {
         ; the lights: play green, pause yellow, stop red
-        ubyte c = 0
+        alias c = cx16.r5L                 ; (each value passed before the next call)
+        c = 0
         if playing and not paused
             c = vrlook.GREEN
         vr.ColorRect(ICON_COL0 + 6, 2, LED_ROW, 1, c)
@@ -560,11 +607,10 @@ main {
                 vrlook.field_text("High bandwidth: plays from the SD card only.", RP_X, 252, 260, false)
             else
                 vrlook.field_text("Plays full screen; Veranda comes back after.", RP_X, 252, 260, false)
-            vrlook.field_text("Esc stop   Space pause   Up/Down volume", RP_X, 268, 260, false)
         } else {
+            ; (the keys: the Deck's legend)
             vrlook.field_text("Plays here: the disc turns in the deck.", RP_X, 252, 260, false)
-            vrlook.field_text("Esc stop   Space pause   Up/Down volume", RP_X, 268, 260, false)
-            vrlook.field_text("The buttons work while it plays.", RP_X, 284, 260, false)
+            vrlook.field_text("The buttons work while it plays.", RP_X, 268, 260, false)
         }
         leds(false, false)
     }
@@ -644,14 +690,17 @@ main {
     }
 
     sub ent_get(ubyte i) {
-        ubyte b = cx16.ram_bank
+        alias b = cx16.r5L
+        b = cx16.ram_bank
         sys.memcopy(slot(order[i]), &cur, 64)
         cx16.ram_bank = b
     }
 
     sub ent_put(ubyte kind, str name) {
-        ubyte b = cx16.ram_bank
-        uword p = slot(n_ent)
+        alias b = cx16.r5L
+        alias p = cx16.r6
+        b = cx16.ram_bank
+        p = slot(n_ent)
         order[n_ent] = n_ent
         @(p) = kind
         void strings.ncopy(name, p + 1, 62)
@@ -668,12 +717,16 @@ main {
 
     sub media_kind(str s) -> ubyte {
         ; 'V' an SPV, 'A' a WAV or ZCM, 0 neither
-        ubyte l = strings.length(s)
+        alias l = cx16.r5L
+        alias a = cx16.r5H
+        alias b = cx16.r6L
+        alias c = cx16.r6H
+        l = strings.length(s)
         if l < 5 or s[l - 4] != '.'
             return 0
-        ubyte a = lower(s[l - 3])
-        ubyte b = lower(s[l - 2])
-        ubyte c = lower(s[l - 1])
+        a = lower(s[l - 3])
+        b = lower(s[l - 2])
+        c = lower(s[l - 1])
         if a == 's' and b == 'p' and c == 'v'
             return 'V'
         if (a == 'w' and b == 'a' and c == 'v') or (a == 'z' and b == 'c' and c == 'm')
@@ -722,18 +775,21 @@ main {
 
     sub ent_cmp(ubyte a, ubyte b) -> byte {
         ; slots a and b in order: "..", folders, media; then the name, case ignored
-        ubyte save = cx16.ram_bank
+        alias save = cx16.r6H
+        alias x = cx16.r5L
+        alias y = cx16.r5H
+        alias i = cx16.r6L
+        save = cx16.ram_bank
         sys.memcopy(slot(a), &cur, 64)
         sys.memcopy(slot(b), &cmp_b, 64)
         cx16.ram_bank = save
-        ubyte x = rank(cur[0])
-        ubyte y = rank(cmp_b[0])
+        x = rank(cur[0])
+        y = rank(cmp_b[0])
         if x != y {
             if x < y
                 return -1
             return 1
         }
-        ubyte i
         for i in 1 to 63 {
             x = lower(cur[i])
             y = lower(cmp_b[i])
@@ -757,9 +813,9 @@ main {
     }
 
     sub list_sort() {
-        ubyte i
-        ubyte j
-        ubyte t
+        alias i = cx16.r8L                 ; (not r5, r6: ent_cmp's)
+        alias j = cx16.r8H
+        alias t = cx16.r9L
         if n_ent < 2
             return
         for i in 1 to n_ent - 1 {
@@ -875,7 +931,8 @@ main {
     }
 
     sub scroll_to(word t) {
-        word most = 0
+        alias most = cx16.r5s
+        most = 0
         if n_ent > LIST_N
             most = (n_ent - LIST_N) as word
         if t > most
@@ -895,8 +952,10 @@ main {
             e = 0
         if e >= (n_ent as word)
             e = (n_ent - 1) as word
-        ubyte old = sel
-        ubyte t = top
+        alias old = cx16.r5L
+        alias t = cx16.r5H
+        old = sel
+        t = top
         sel = lsb(e)
         if sel < top
             top = sel
@@ -1034,14 +1093,16 @@ main {
         sys.memset(&mflpt, 5, 0)
         if n <= 0
             return
-        ubyte k = 0
-        long t = n
+        alias k = cx16.r5L
+        alias i = cx16.r5H
+        alias t = cx16.r8r9sl
+        k = 0
+        t = n
         while t != 0 {
             t >>= 1
             k++
         }
         mflpt[0] = 128 + k
-        ubyte i
         for i in 0 to k - 1 {
             if ((n >> (k - 1 - i)) & 1) != 0
                 mflpt[1 + i / 8] |= $80 >> (i & 7)
@@ -1053,13 +1114,16 @@ main {
         ; the CBM 5-byte float in mflpt as a whole number (a fraction dropped; < 0: 0)
         if mflpt[0] <= 128 or (mflpt[1] & $80) != 0
             return 0
-        ubyte k = mflpt[0] - 128
+        alias k = cx16.r5L
+        alias i = cx16.r5H
+        alias b = cx16.r6L
+        alias v = cx16.r8r9sl
+        k = mflpt[0] - 128
         if k > 31
             return $7FFFFFFF
-        long v = 0
-        ubyte i
+        v = 0
         for i in 0 to k - 1 {
-            ubyte b = mflpt[1 + i / 8]
+            b = mflpt[1 + i / 8]
             if i < 8
                 b |= $80
             v <<= 1
@@ -1073,17 +1137,23 @@ main {
         ; audio: a byte position to a time (m_rate the file's bytes a second)
         if m_rate == 0
             return 0
-        long secs = pos / m_rate
-        long rem = pos - secs * m_rate
+        alias secs = cx16.r8r9sl
+        alias rem = cx16.r6r7sl
+        secs = pos / m_rate
+        rem = pos - secs * m_rate
         return secs * 60 + (rem * 60 + m_rate / 2) / m_rate
     }
 
     sub jiffies_to_pos(long j) -> long {
         ; audio: a time to a byte position, up to a whole sample (as PLAYMOVIES)
-        long secs = j / 60
-        long rem = j - secs * 60
-        long pos = secs * m_rate + rem * m_rate / 60
-        ubyte blk = 1
+        alias secs = cx16.r8r9sl
+        alias rem = cx16.r6r7sl
+        alias pos = cx16.r10r11sl
+        alias blk = cx16.r5L
+        secs = j / 60
+        rem = j - secs * 60
+        pos = secs * m_rate + rem * m_rate / 60
+        blk = 1
         if m_16bit
             blk *= 2
         if m_stereo
@@ -1126,7 +1196,9 @@ main {
         void strings.append(&mark_text, ")")
         pokew(&box_resume + 9, &mark_text)
         pokew(&box_resume + 14, &R3)
-        return vr.DoDlgBox(&box_resume)
+        ubyte ans = vr.DoDlgBox(&box_resume)
+        void take_wheel()
+        return ans
     }
 
     ; ================================================================= playing
@@ -1168,11 +1240,13 @@ main {
 
     sub build_chain(ubyte e) {
         ; a video with Repeat on: the same again in the same excursion; with
-        ; Play next on: the videos that would follow it (up to an audio file,
-        ; CHAIN_MAX of them) - played one after another, no window between
+        ; Play next (or Shuffle) on: the videos that would follow it (up to an
+        ; audio file, CHAIN_MAX of them) - played one after another, no window
+        ; between. Shuffle alone goes on to the next only when Tab skips
         vkx.chain_len = 0
         vkx.chain_repeat = repeat_on
-        if repeat_on or not next_on
+        vkx.chain_auto = next_on
+        if repeat_on or not (next_on or shuffle)
             return
         if chain_names == 0
             chain_names = memory("chain_names", vkx.CHAIN_MAX * CHAIN_NAME, 0)
@@ -1248,6 +1322,11 @@ main {
         progress_clear()
         vkx.chain_len = 0
         vkx.chain_repeat = false
+        ; Tab skips to the next file in a list (Play next or Shuffle on): VIDKIT's
+        ; KEY_EXTRA; playing a single file it is no key at all
+        vkx.skip_key = 0
+        if next_on or shuffle
+            vkx.skip_key = 9
         if m_kind == K_VIDEO {
             build_chain(e)
             vkx.start_frame = start
@@ -1265,6 +1344,7 @@ main {
             test_blank_bad = true
         ubyte r = vkx.play(base)
         vktape.disc_restore()               ; (audio: palette entries 32-47 as they were)
+        void take_wheel()                   ; (turns made while it played don't scroll)
         ; back: the window is Veranda's again. After a run of videos: the last
         ; one played is the one shown (shuffle: the ones before it remembered)
         if vkx.chain_played != 0 {
@@ -1281,6 +1361,10 @@ main {
             ui_track()
         }
         marks_after(r)
+        if AUTOTEST and test_tab != 0 {
+            test_tab_after(r, e)
+            return
+        }
         if AUTOTEST {
             if m_kind == K_VIDEO
                 test_log("VP VIDEO ", r)
@@ -1339,6 +1423,11 @@ main {
             field(6, fs)
             if step_after != 0 {
                 ask_step(step_after)
+            } else if r == vkx.SKIPPED {
+                ; Tab: on to the next file (a video run went on by itself while
+                ; there were videos; this is the end of it, or audio)
+                ask_step(1)
+                ui_status("Skipped")
             } else if r == vkx.FINISHED {
                 ; repeat (or VIDKIT's F5 loop): the same again; "Play next" on: the
                 ; next one; else it stops here. (A stop - Esc, Stop - ends it here,
@@ -1359,6 +1448,8 @@ main {
         ; the bookmarks after a play: a file stopped part way gets one (where it
         ; stopped), files played to the end lose theirs. (A run of videos: the
         ; first and all but the last of the chain ended; m_* are the last one's)
+        if r == vkx.SKIPPED
+            r = vkx.FINISHED                ; (a skipped file: done with, as one played to its end)
         if r != vkx.FINISHED and r != vkx.STOPPED
             return
         if vkx.chain_played != 0 {
@@ -1469,15 +1560,33 @@ main {
             if vkx.elapsed_jiffies() > 120
                 vkx.stop_request = true
         }
+        if AUTOTEST and test_tab != 0 {
+            ; the Tab tests: Tab at the 30th call (VIDKIT's key controller reads
+            ; it this frame; not in the third play), a stop at the test_tab_at'th
+            test_ctl++
+            if test_ctl == 30 and test_tab != 3 {
+                %asm {{
+                    lda  #9
+                    jsr  $fec3              ; kbdbuf_put: Tab
+                }}
+            }
+            if test_ctl == test_tab_at
+                vkx.stop_request = true
+        }
         vkx.mouse_poll()
         if m_kind == K_VIDEO
             return
-        ubyte down = vkx.mouse_buttons & 1
+        alias down = cx16.r5L               ; (VIDKIT's r0-r15 are kept around this call: vkx.user_call)
+        alias col = cx16.r5H
+        alias x = cx16.r6
+        alias y = cx16.r8
+        alias p = cx16.r9bL
+        down = vkx.mouse_buttons & 1
         if down != 0 and last_buttons == 0 {
-            uword x = vkx.mouse_x
-            uword y = vkx.mouse_y
+            x = vkx.mouse_x
+            y = vkx.mouse_y
             if y >= ICON_Y and y < ICON_Y + 24 {
-                ubyte col = lsb(x >> 3)
+                col = lsb(x >> 3)
                 if col >= ICON_COL0 and col < ICON_COL0 + 4 {
                     step_after = -1
                     vkx.stop_request = true
@@ -1494,7 +1603,7 @@ main {
             }
         }
         last_buttons = down
-        bool p = vkx.pause_request or vkx.paused
+        p = vkx.pause_request or vkx.paused
         if p != leds_paused {
             leds_paused = p
             if p {
@@ -1581,7 +1690,8 @@ main {
     }
 
     sub key() {
-        ubyte k = vr.keyData
+        alias k = cx16.r5L
+        k = vr.keyData
         if vr.menuNumber != 0
             return
         when k {
@@ -1617,6 +1727,11 @@ main {
     ubyte test_plays
     ubyte test_wait
     bool  test_blank_bad
+    ubyte test_tab                      ; the Tab tests' step (1 single file, 2 a list, 3 the next, 4 videos)
+    ubyte test_tab_at                   ; play_control: a stop at this call
+    ubyte test_ctl                      ; play_control's calls in this play
+    bool  test_wheel
+    ubyte test_fin                      ; update: test_end a few passes after the last play (the blanking put back)
 
     sub test_check(str what, bool ok) {
         ; "VP <what> OK" or "VP <what> BAD" (make test fails on a BAD)
@@ -1637,6 +1752,44 @@ main {
         test_wait = 0
     }
 
+    sub test_tab_after(ubyte r, ubyte e) {
+        ; after each play of the Tab tests (play_entry returns straight after).
+        ; The card: 8BG.WAV 0, BEEP.WAV 1, CHIME.WAV 2, then (MEDIA) DOG1.SPV 3, DOG2.SPV 4
+        playing_ent = $FF
+        row_of(e)
+        test_ctl = 0
+        when test_tab {
+            1 -> {
+                ; a single file: Tab is no key, it played on until stopped
+                test_check("VP TAB SINGLE", r == vkx.STOPPED)
+                next_on = true
+                ask_play(0)
+            }
+            2 -> {
+                ; a list: Tab skipped, the bookmark went; on to the next
+                test_check("VP TAB SKIP", r == vkx.SKIPPED and mark_val == 0)
+                test_tab_at = 30
+                ask_step(1)
+            }
+            3 -> {
+                ; the next one played (stopped by play_control); then videos, if
+                ; the card has them: Tab in DOG1 goes straight on to DOG2
+                test_check("VP TAB NEXT", e == 1)
+                ent_get(3)
+                if cur[0] != 'V'
+                    test_tab = 4
+                else {
+                    test_tab_at = 120
+                    ask_play(3)
+                }
+            }
+            4 -> test_check("VP TAB VIDEOS", r == vkx.STOPPED and vkx.chain_played == 1)
+        }
+        test_tab++
+        if test_tab == 5
+            test_fin = 1
+    }
+
     sub test_logl(str what, long v) {
         void strings.copy(what, fs)
         void strings.append(fs, conv.str_l(v))
@@ -1649,17 +1802,66 @@ main {
         vr.LogText(fs)
     }
 
+    asmsub take_wheel() -> ubyte @A {
+        ; Veranda's mouseWheel ($0571, API 5): the turns since the last read, taken
+        ; and cleared with interrupts off (as Veranda's own programs do)
+        %asm {{
+            php
+            sei
+            lda  $0571
+            stz  $0571
+            plp
+            rts
+        }}
+    }
+
     sub update() {
+        if AUTOTEST and test_fin != 0 {
+            test_fin++
+            if test_fin == 10
+                test_end()
+        }
+        ; the wheel scrolls the playlist, 3 rows a notch (no menu open)
+        alias w = cx16.r5sL
+        w = take_wheel() as byte
+        if w != 0 and vr.menuNumber == 0 {
+            ; (in two steps: Prog8 12.3.5 kept top in a scratch register that
+            ; its multiply by 3 overwrites, in the one expression)
+            alias d = cx16.r6s
+            d = (w as word) * 3
+            scroll_to(d + (top as word))
+        }
         if AUTOTEST and test_wait != 0 {
             test_wait++
             if test_wait == 60 {
                 ; a second after the stop with F5 on: nothing plays again
                 test_check("VP STOP AFTER F5", pending == P_NONE)
-                test_end()
+                test_wait = 0
+                ; the Tab tests: a single file (Tab does nothing), then a list
+                next_on = false
+                vkx.limit_jiffies = 0           ; (stopped by play_control: no PLAY_TO_TIMER)
+                test_tab = 1
+                test_tab_at = 90
+                ask_play(1)                     ; (BEEP.WAV)
             }
         }
         if AUTOTEST and test_plays == 0 {
             test_passes++
+            ; the wheel (mkwav.py's W00-W19.WAV make the list longer than the
+            ; panel): 2 notches down, then far up, then far down
+            when test_passes {
+                10 -> vr.mouseWheel = 2
+                11 -> {
+                    test_wheel = top == 6
+                    vr.mouseWheel = 100
+                }
+                12 -> {
+                    if top != n_ent - LIST_N
+                        test_wheel = false
+                    vr.mouseWheel = 156         ; (-100)
+                }
+                13 -> test_check("VP WHEEL", test_wheel and top == 0)
+            }
             if test_passes == 30 {
                 ; Play all in an empty folder: nothing to play (the entries'
                 ; banks still hold this folder's: the old loop found them)
