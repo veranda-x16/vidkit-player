@@ -44,7 +44,8 @@ with the mouse while it plays.
 In the playlist: Up/Down, PgUp/PgDn, Home/End choose a file. Return opens
 a folder or plays a file, Space plays, Right plays the next file,
 Backspace goes up a folder; Left plays the previous file. Alt+Q quits.
-The mouse wheel scrolls the playlist, three rows a notch.
+The mouse wheel moves the selection a file a notch, as Up/Down do; the
+list scrolls when the selection passes the top or bottom of the panel.
 
 While it plays: Esc stops, Space pauses, Up/Down set the volume, F5
 plays the file again when it ends (Esc still stops it). With Play next

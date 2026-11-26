@@ -1821,15 +1821,14 @@ main {
             if test_fin == 10
                 test_end()
         }
-        ; the wheel scrolls the playlist, 3 rows a notch (no menu open)
+        ; the wheel moves the selection, a file a notch, as Up/Down do: the list
+        ; scrolls when it passes the top or bottom of the panel (no menu open)
         alias w = cx16.r5sL
         w = take_wheel() as byte
         if w != 0 and vr.menuNumber == 0 {
-            ; (in two steps: Prog8 12.3.5 kept top in a scratch register that
-            ; its multiply by 3 overwrites, in the one expression)
             alias d = cx16.r6s
-            d = (w as word) * 3
-            scroll_to(d + (top as word))
+            d = w as word
+            select_entry(d + (sel as word))
         }
         if AUTOTEST and test_wait != 0 {
             test_wait++
@@ -1849,18 +1848,19 @@ main {
             test_passes++
             ; the wheel (mkwav.py's W00-W19.WAV make the list longer than the
             ; panel): 2 notches down, then far up, then far down
+            ; the selection moves, the list scrolls only past the panel's ends
             when test_passes {
                 10 -> vr.mouseWheel = 2
                 11 -> {
-                    test_wheel = top == 6
+                    test_wheel = sel == 2 and top == 0
                     vr.mouseWheel = 100
                 }
                 12 -> {
-                    if top != n_ent - LIST_N
+                    if sel != n_ent - 1 or top != n_ent - LIST_N
                         test_wheel = false
                     vr.mouseWheel = 156         ; (-100)
                 }
-                13 -> test_check("VP WHEEL", test_wheel and top == 0)
+                13 -> test_check("VP WHEEL", test_wheel and sel == 0 and top == 0)
             }
             if test_passes == 30 {
                 ; Play all in an empty folder: nothing to play (the entries'
