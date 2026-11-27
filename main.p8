@@ -1572,6 +1572,13 @@ main {
             }
             if test_ctl == test_tab_at
                 vkx.stop_request = true
+            if test_ctl == 100 {
+                ; (the chained video: its border as vkx keeps it)
+                ubyte c = cx16.VERA_CTRL
+                cx16.VERA_CTRL = 0
+                test_border = @($9f2c)
+                cx16.VERA_CTRL = c
+            }
         }
         vkx.mouse_poll()
         if m_kind == K_VIDEO
@@ -1731,6 +1738,7 @@ main {
     ubyte test_tab_at                   ; play_control: a stop at this call
     ubyte test_ctl                      ; play_control's calls in this play
     bool  test_wheel
+    ubyte test_border = $FF
     ubyte test_fin                      ; update: test_end a few passes after the last play (the blanking put back)
 
     sub test_check(str what, bool ok) {
@@ -1783,7 +1791,11 @@ main {
                     ask_play(3)
                 }
             }
-            4 -> test_check("VP TAB VIDEOS", r == vkx.STOPPED and vkx.chain_played == 1)
+            4 -> {
+                test_check("VP TAB VIDEOS", r == vkx.STOPPED and vkx.chain_played == 1)
+                ; an 8 bpp video after the skip: border entry 0 (16 below 8 bpp)
+                test_check("VP BORDER", test_border == vkx.border)
+            }
         }
         test_tab++
         if test_tab == 5
