@@ -51,6 +51,8 @@ While it plays: Esc stops, Space pauses, Up/Down set the volume, F5
 plays the file again when it ends (Esc still stops it). With Play next
 or Shuffle on, Tab skips to the next file (Shuffle: a random one); a
 skipped file keeps no bookmark. Playing a single file, Tab does nothing.
+The volume stays as you set it while a list goes on (muted too); a file
+you start yourself comes up at the middle volume if it was muted.
 The Deck shows these keys.
 
 With **Play next** on, the player goes on to the next file by itself.

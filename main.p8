@@ -110,6 +110,7 @@ main {
     const ubyte P_STEP = 2          ;   the next (pending_dir 1) or previous (-1) one
     ubyte pending_ent
     byte  pending_dir
+    bool  steering                     ; the next play goes on with a list (vkx.keep_volume)
     byte  step_after                ; set during play: next/previous asked for (a button)
     ubyte track_no
     ubyte[16] hist                  ; the shuffle's history
@@ -1206,11 +1207,20 @@ main {
     sub ask_play(ubyte e) {
         pending = P_PLAY
         pending_ent = e
+        steering = false
     }
 
     sub ask_step(byte d) {
         pending = P_STEP
         pending_dir = d
+        steering = false
+    }
+
+    sub steer(byte d) {
+        ; the list goes on (Play next / Shuffle at a file's end, Tab, Next / Prev
+        ; while it plays): the volume as it is, muted (0) too
+        ask_step(d)
+        steering = true
     }
 
     sub play_selected() {
@@ -1327,6 +1337,10 @@ main {
         vkx.skip_key = 0
         if next_on or shuffle
             vkx.skip_key = 9
+        ; a muted volume holds while the list goes on; a play started by hand
+        ; takes 0 as unset (10)
+        vkx.keep_volume = steering
+        steering = false
         if m_kind == K_VIDEO {
             build_chain(e)
             vkx.start_frame = start
@@ -1422,20 +1436,21 @@ main {
             mmss(m_secs)
             field(6, fs)
             if step_after != 0 {
-                ask_step(step_after)
+                steer(step_after)
             } else if r == vkx.SKIPPED {
                 ; Tab: on to the next file (a video run went on by itself while
                 ; there were videos; this is the end of it, or audio)
-                ask_step(1)
+                steer(1)
                 ui_status("Skipped")
             } else if r == vkx.FINISHED {
                 ; repeat (or VIDKIT's F5 loop): the same again; "Play next" on: the
                 ; next one; else it stops here. (A stop - Esc, Stop - ends it here,
                 ; F5 or not: vkx.loop_requested is only set for a play that finished)
-                if repeat_on or vkx.loop_requested
+                if repeat_on or vkx.loop_requested {
                     ask_play(e)
-                else if next_on
-                    ask_step(1)
+                    steering = true
+                } else if next_on
+                    steer(1)
                 ui_status("Finished")
             } else
                 ui_status("Stopped")
@@ -1534,18 +1549,22 @@ main {
 
     sub step_track(byte d) {
         ; the next or previous file (shuffle: a random one, back through the
-        ; ones played), wrapping at the ends of the list
+        ; ones played), wrapping at the ends of the list. (A step the list took
+        ; by itself stays one: steering kept through ask_play)
+        bool keep = steering
+        ubyte e
         if shuffle and d < 0 and n_hist != 0 {
             n_hist--
-            ask_play(hist[n_hist])
-            return
+            e = hist[n_hist]
+        } else {
+            e = pick(sel, d, sel)
+            if e == $FF
+                return
+            if shuffle and d > 0
+                hist_push(sel)
         }
-        ubyte e = pick(sel, d, sel)
-        if e == $FF
-            return
-        if shuffle and d > 0
-            hist_push(sel)
         ask_play(e)
+        steering = keep
     }
 
     ; ---------------------------------------------------------------- while media plays
@@ -1771,18 +1790,22 @@ main {
                 ; a single file: Tab is no key, it played on until stopped
                 test_check("VP TAB SINGLE", r == vkx.STOPPED)
                 next_on = true
+                vkx.volume = 0                  ; (muted: a play by hand makes it 10)
                 ask_play(0)
             }
             2 -> {
                 ; a list: Tab skipped, the bookmark went; on to the next
                 test_check("VP TAB SKIP", r == vkx.SKIPPED and mark_val == 0)
+                test_wheel = vkx.volume == 10   ; (reused: the volume check's first half)
+                vkx.volume = 0                  ; (muted: the list going on keeps it)
                 test_tab_at = 30
-                ask_step(1)
+                steer(1)
             }
             3 -> {
                 ; the next one played (stopped by play_control); then videos, if
                 ; the card has them: Tab in DOG1 goes straight on to DOG2
                 test_check("VP TAB NEXT", e == 1)
+                test_check("VP VOLUME", test_wheel and vkx.volume == 0)
                 ent_get(3)
                 if cur[0] != 'V'
                     test_tab = 4

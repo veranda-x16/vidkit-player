@@ -1,6 +1,6 @@
 # The version of Prog8 for Veranda (the toolkit: its target, lib/ and tools/)
 # this player is built with. `make toolkit` and the CI clone it from here;
 # the CI's repository variable P8KIT_URL, or make's P8KIT_URL, overrides the url.
-# (ref: the kit's commit with item E, the border and VRAM before each video; a tag can replace it)
+# (ref: the kit's commit with vkx.keep_volume; a tag can replace it)
 url  https://github.com/veranda-x16/veranda-prog8.git
-ref  ba4e774fddd9404a0cd67da82aa1b2f8e290871c
+ref  6fb31ff1bb263198ec21d51029e23b59134dbbdc
